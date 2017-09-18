@@ -1,0 +1,46 @@
+post_install() {
+    check_hostid
+    check_initramfs
+}
+
+post_remove() {
+    check_initramfs 'remove'
+}
+
+post_upgrade() {
+    check_hostid
+    check_initramfs
+}
+
+check_hostid() {
+    # Check /etc/hostid to see if it set to the sentinel value, see
+    # https://wiki.archlinux.org/index.php/ZFS for more information.
+    HOSTID=$(hostid)
+    if [ "0x$HOSTID" == "0xffffffff" ]; then
+        # Generate a new hostid
+        : >/etc/hostid
+        HOSTID=$(hostid)
+        # hostid is 4 byte little endian
+        printf $(echo -n $HOSTID | sed 's/\(..\)\(..\)\(..\)\(..\)/\\x\4\\x\3\\x\2\\x\1/') >/etc/hostid
+    fi
+}
+
+check_initramfs() {
+    echo ">>> Updating module dependencies. Please wait ..."
+
+    _kernel_module_version=$(pacman -Ql linux | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-[0-9]+' | head -n1)
+
+    depmod ${_kernel_module_version}-ARCH
+
+    MK_CONF=$(grep -v '#' /etc/mkinitcpio.conf | grep zfs >/dev/null; echo $?);
+    if [[ $MK_CONF == '0' ]]; then
+        if [[ $1 == 'remove' ]]; then
+            echo '>>> The ZFS packages have been removed, but "zfs" remains in the "hooks"'
+            echo '>>> list in mkinitcpio.conf! You will need to remove "zfs" from the '
+            echo '>>> "hooks" list and then regenerate the initial ramdisk.'
+        else
+            echo ">>> Generating initial ramdisk, using mkinitcpio. Please wait..."
+            mkinitcpio -p linux
+        fi
+    fi
+}
