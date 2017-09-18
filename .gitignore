@@ -1,0 +1,5 @@
+src/
+spl/
+zfs/
+pkg/
+*.pkg.*
