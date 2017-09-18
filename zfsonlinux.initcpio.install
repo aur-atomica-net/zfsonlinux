@@ -12,15 +12,10 @@ build() {
         zunicode
 
     map add_binary \
-        arc_summary.py \
-        arcstat.py \
-        dbufstat.py \
         fsck.zfs \
         hostid \
         mount.zfs \
-        raidz_test \
         splat \
-        splslab.py \
         zdb \
         zed \
         zfs \
@@ -29,7 +24,6 @@ build() {
         zinject \
         zpool \
         zstreamdump \
-        ztest \
         /lib/udev/vdev_id \
         /lib/udev/zvol_id
 
@@ -48,6 +42,7 @@ build() {
     echo 'zfs' >>"$BUILDROOT/etc/filesystems"
 
     [[ -f /etc/zfs/zpool.cache ]] && add_file "/etc/zfs/zpool.cache"
+    [[ -f /etc/zfs/vdev_id.conf ]] && add_file "/etc/zfs/vdev_id.conf"
     [[ -f /etc/modprobe.d/zfs.conf ]] && add_file "/etc/modprobe.d/zfs.conf"
     [[ -f /etc/hostid ]] && add_file "/etc/hostid"
 }
