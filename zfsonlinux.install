@@ -1,7 +1,7 @@
 post_install() {
-    zgenhostid
+    zgenhostid || true
 }
 
 post_upgrade() {
-    zgenhostid
+    zgenhostid || true
 }
