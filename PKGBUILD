@@ -4,10 +4,10 @@ _kernel_version=$(pacman -Q linux | awk '{print $2}')
 _kernel_module_version=$(pacman -Ql linux | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-[0-9]+' | head -n1)
 
 pkgname='zfsonlinux-git'
-pkgver=2792.954.a35b4cc8c_9df9692
+pkgver=2805.954_b33d668dd.9df9692
 pkgrel=1
 license=('CDDL' 'GPL')
-pkgdesc='An implementation of OpenZFS designed to work in a Linux environment.'
+pkgdesc='An implementation of OpenZFS designed to work in a Linux environment'
 depends=("linux=${_kernel_version}")
 makedepends=('git' "linux-headers=${_kernel_version}")
 arch=('x86_64')
@@ -22,6 +22,7 @@ sha256sums=('SKIP'
             'SKIP')
 provides=('zfs')
 conflicts=('zfsonlinux' 'zfs-git' 'spl-git' 'zfs-utils-git' 'spl-utils-git')
+backup=('etc/hostid' 'etc/sudoers.d/zfs')
 install=zfsonlinux.install
 
 pkgver() {
@@ -33,7 +34,7 @@ pkgver() {
     SPL_REV=$(git rev-list --count --first-parent HEAD)
     SPL_SHA=$(git rev-parse --short --verify HEAD)
 
-    echo "${ZFS_REV}.${SPL_REV}.${ZFS_SHA}_${SPL_SHA}"
+    echo "${ZFS_REV}.${SPL_REV}_${ZFS_SHA}.${SPL_SHA}"
 }
 
 build() {
@@ -85,11 +86,14 @@ package() {
     install -D -m644 "${srcdir}"/zfsonlinux.initcpio.hook "${pkgdir}"/usr/lib/initcpio/hooks/zfs
     install -D -m644 "${srcdir}"/zfsonlinux.initcpio.install "${pkgdir}"/usr/lib/initcpio/install/zfs
 
+    # dracut support (untested)
+    sed -i "s+dracut_install /usr/lib/gcc/.*+dracut_install /usr/lib/libgcc_s\.so\.1+" ${pkgdir}/usr/lib/dracut/modules.d/90zfs/module-setup.sh
+
     cd "${srcdir}/zfs/contrib/bash_completion.d"
     make DESTDIR="${pkgdir}" install
 
     # Remove unused
-    rm -r "${pkgdir}"/etc/init.d
+    rm -r "${pkgdir}"/etc/init.d "${pkgdir}"/etc/zfs/zfs-functions "${pkgdir}"/etc/default "${pkgdir}"/usr/share/initramfs-tools
 
     # Move /lib to /usr/lib and cleanup
     cp -r "${pkgdir}"/{lib,usr}
