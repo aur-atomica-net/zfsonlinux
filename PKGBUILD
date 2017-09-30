@@ -1,10 +1,10 @@
 # Maintainer: Jason R. McNeil <jason@jasonrm.net>
 
 _kernel_version=$(pacman -Q linux | awk '{print $2}')
-_kernel_module_version=$(pacman -Ql linux | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-[0-9]+' | head -n1)
+_kernel_module_version=$(pacman -Ql linux | grep -m 1 -oE '[0-9]+\.[0-9]+\.[0-9]+-[0-9]+')
 
 pkgname='zfsonlinux-git'
-pkgver=2812.955_01ff0d754.e8474f9
+pkgver=2805.954_b33d668dd.9df9692
 pkgrel=1
 license=('CDDL' 'GPL')
 pkgdesc='An implementation of OpenZFS designed to work in a Linux environment'
@@ -33,8 +33,6 @@ pkgver() {
     cd ${srcdir}/spl
     SPL_REV=$(git rev-list --count --first-parent HEAD)
     SPL_SHA=$(git rev-parse --short --verify HEAD)
-
-    KERNEL_VER=$(pacman -Ql linux | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-[0-9]+' | head -n1 | sed -r 's/-/_/g')
 
     echo "${ZFS_REV}.${SPL_REV}_${ZFS_SHA}.${SPL_SHA}"
 }

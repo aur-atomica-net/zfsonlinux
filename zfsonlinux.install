@@ -1,7 +1,13 @@
 post_install() {
+    _kernel_module_version=$(pacman -Ql linux | grep -m 1 -oE '[0-9]+\.[0-9]+\.[0-9]+-[0-9]+')
+    depmod ${_kernel_module_version}-ARCH
+
     zgenhostid || true
 }
 
 post_upgrade() {
+    _kernel_module_version=$(pacman -Ql linux | grep -m 1 -oE '[0-9]+\.[0-9]+\.[0-9]+-[0-9]+')
+    depmod ${_kernel_module_version}-ARCH
+
     zgenhostid || true
 }
