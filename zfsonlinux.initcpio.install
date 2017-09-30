@@ -34,14 +34,14 @@ build() {
         /lib/udev/rules.d/90-zfs.rules
 
     map add_dir \
-        /etc/zfs/zed.d
+        /etc/zfs/zed.d \
+        /etc/zfs/zpool.d
 
     add_runscript
 
     # allow mount(8) to "autodetect" ZFS
     echo 'zfs' >>"$BUILDROOT/etc/filesystems"
 
-    [[ -f /etc/zfs/zpool.cache ]] && add_file "/etc/zfs/zpool.cache"
     [[ -f /etc/zfs/vdev_id.conf ]] && add_file "/etc/zfs/vdev_id.conf"
     [[ -f /etc/modprobe.d/zfs.conf ]] && add_file "/etc/modprobe.d/zfs.conf"
     [[ -f /etc/hostid ]] && add_file "/etc/hostid"
@@ -58,18 +58,18 @@ Command Line Setup:
 
     To use ZFS as your boot filesystem:
 
-        zfs=bootfs or zfs=auto or root=zfs
+        root=zfs:<pool>/<dataset>
+            or
+        root=zfs:<pool>/<dataset>@<snapshot>
 
-    To use a pool or dataset:
+    If the root filesystem is a snapshot:
 
-        zfs=<pool/dataset>
+        Appending `zfs_rollback` will attempt a (recursive) rollback of the
+        filesystem(s) instead of a destroy/clone.
 
     To force importing of a ZFS pool:
 
-        zfs_force=1
-
-        If set to 1, this will use "zpool import -f" when attempting to import
-        pools.
+        Append `zfs_force` to force import the specified pool.
 
     To search for devices in a directory other than "/dev":
 
@@ -85,13 +85,9 @@ Command Line Setup:
 
 Examples:
 
-    To use bootfs on your pool, use
-
-        zfs=bootfs rw
-
     This will setup your root using tank/root zfs pool.
 
-        zfs=tank/root rw
+        root=zfs:tank/root rw
 
 If you want to set properties for zfs-on-linux module, you should add them to
 /etc/modprobe.d/zfs.conf and then rebuild initcpio.

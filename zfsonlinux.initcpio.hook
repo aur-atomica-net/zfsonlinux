@@ -1,100 +1,298 @@
-ZPOOL_FORCE=""
-ZPOOL_IMPORT_FLAGS=""
+# based on zfsonlinux initramfs hook
 
-zfs_get_bootfs () {
-    for zfs_dataset in $(/usr/bin/zpool list -H -o bootfs); do
-        case ${zfs_dataset} in
-            "" | "-")
-                # skip this line/dataset
-                ;;
-            "no pools available")
-                return 1
-                ;;
-            *)
-                ZFS_DATASET=${zfs_dataset}
-                return 0
-                ;;
-        esac
+import_pool() {
+    local pool=$1
+    local rwopt_exp=${rwopt:-ro}
+
+    # Early return if the pool with this name is already imported
+    zpool status "$pool" > /dev/null 2>&1 && return 0
+
+    if [ "$rwopt_exp" != "rw" ]; then
+        ZPOOL_IMPORT_RO="-o readonly=on"
+    fi
+
+    if ! zpool import -N ${ZPOOL_FORCE} ${ZPOOL_IMPORT_RO} "$pool"; then
+        echo "Failed to import pool: '$pool'"
+        echo "Manually import the pool and exit."
+        /bin/sh
+    fi
+
+    return 0
+}
+
+get_fs_value()
+{
+    local fs="$1"
+    local value=$2
+
+    zfs get -H -ovalue "$value" "$fs" 2> /dev/null
+}
+
+# Clone snapshot $1 to destination filesystem $2
+# Set 'canmount=noauto' and 'mountpoint=none' so that we get to keep
+# manual control over it's mounting (i.e., make sure it's not automatically
+# mounted with a 'zfs mount -a' in the init/systemd scripts).
+clone_snap()
+{
+    local snap="$1"
+    local destfs="$2"
+    local mountpoint="$3"
+
+    # Check that the filesystem exists
+    if zfs list -oname -tfilesystem -H "${destfs}" > /dev/null 2>&1; then
+        echo "Failed to clone snapshot '$snap' because '$destfs' already exists"
+        echo "Manually destroy '$destfs' or set the kernel option 'zfs_rollback'"
+        /bin/sh
+    fi
+
+    # Clone the snapshot into a dataset we can boot from
+    # + We don't want this filesystem to be automatically mounted, we
+    #   want control over this here and nowhere else.
+    # + We don't need any mountpoint set for the same reason.
+    # We use the 'org.zol:mountpoint' property to remember the mountpoint.
+    if ! zfs clone -o canmount=noauto -o mountpoint=none -o org.zol:mountpoint=${mountpoint} $snap $destfs; then
+        echo "Failed to clone snapshot '$snap' to '$destfs'"
+        /bin/sh
+    fi
+
+    return 0
+}
+
+# Rollback a given snapshot.
+rollback_snap()
+{
+    local snap="$1"
+
+    if ! zfs rollback -Rf "$snap"; then
+        echo "Failed to rollback snapshot: '$snap'"
+        /bin/sh
+    fi
+
+    return 0
+}
+
+setup_snapshot_booting() {
+    local snap="$1"
+    local s destfs subfs mountpoint retval=0 filesystems fs
+
+    # Make sure that the snapshot specified actually exist.
+    if [ ! $(get_fs_value "${snap}" type) ]; then
+        echo "Snapshot not found: '${snap}'"
+        /bin/sh
+    fi
+
+    # Separate the full snapshot ('$snap') into it's filesystem and
+    # snapshot names. Would have been nice with a split() function..
+    rootfs="${snap%%@*}"
+    snapname="${snap##*@}"
+    export ZFS_BOOTFS="${rootfs}_${snapname}"
+
+    if [ ! -n "${zfs_rollback}" ]; then
+        # If the destination dataset for the clone
+        # already exists, destroy it. Recursively
+        if get_fs_value "${ZFS_BOOTFS}" type; then
+            filesystems=$(zfs list -oname -tfilesystem -H -r -Sname "${ZFS_BOOTFS}")
+            for fs in $filesystems; do
+                destroy_fs "${fs}"
+            done
+        fi
+    fi
+
+    # Get all snapshots, recursively (might need to clone /usr, /var etc as well).
+    for s in $(zfs list -H -oname -tsnapshot -r "${rootfs}" | grep "${snapname}")
+    do
+        if [ -n "${zfs_rollback}" ]; then
+            # Rollback snapshot
+            rollback_snap "$s" || retval=$((retval + 1))
+        else
+            # Setup a destination filesystem name.
+            # Ex: Called with 'rpool/ROOT/debian@snap2'
+            #       rpool/ROOT/debian@snap2     => rpool/ROOT/debian_snap2
+            #       rpool/ROOT/debian/boot@snap2    => rpool/ROOT/debian_snap2/boot
+            #       rpool/ROOT/debian/usr@snap2 => rpool/ROOT/debian_snap2/usr
+            #       rpool/ROOT/debian/var@snap2 => rpool/ROOT/debian_snap2/var
+            subfs="${s##$rootfs}"
+            subfs="${subfs%%@$snapname}"
+
+            destfs="${rootfs}_${snapname}" # base fs.
+            [ -n "$subfs" ] && destfs="${destfs}$subfs" # + sub fs.
+
+            # Get the mountpoint of the filesystem, to be used
+            # with clone_snap(). If legacy or none, then use
+            # the sub fs value.
+            mountpoint=$(get_fs_value "${s%%@*}" mountpoint)
+            if [ "$mountpoint" = "legacy" -o \
+                "$mountpoint" = "none" ]
+            then
+                if [ -n "${subfs}" ]; then
+                    mountpoint="${subfs}"
+                else
+                    mountpoint="/"
+                fi
+            fi
+
+            # Clone the snapshot into its own
+            # filesystem
+            clone_snap "$s" "${destfs}" "${mountpoint}" || retval=$((retval + 1))
+        fi
     done
-    return 1
+
+    return "${retval}"
+}
+
+# Destroy a given filesystem.
+destroy_fs()
+{
+    local fs="$1"
+
+    if ! zfs destroy "$fs"; then
+        echo "Failed to destroy '$fs'. Please make sure that '$fs' is not availible."
+        echo "Hint: Try:  zfs destroy -Rfn $fs"
+        echo "If this dryrun looks good, then remove the 'n' from '-Rfn' and try again."
+        /bin/sh
+    fi
+
+    return 0
+}
+
+# Unlock a ZFS native crypted filesystem.
+decrypt_fs()
+{
+    local fs="$1"
+
+    # Check if filesystem is encrypted. If not, exit right here.
+    [ "$(get_fs_value "$fs" encryption)" != "off" ] || return 0
+
+    # Unlock the encryption root
+    encryptionroot=$(get_fs_value "$fs" encryptionroot)
+
+    # If the key isn't available, then this will fail!
+    if ! zfs load-key -r "$encryptionroot"; then
+        echo "Failed to load zfs encryption wrapper key for '$fs'"
+        echo "Please verify dataset property 'keysource' for datasets"
+        /bin/sh
+    fi
+
+    return 0
+}
+
+# Mount a given filesystem
+mount_fs()
+{
+    local fs="$1"
+    local mountpoint
+    local rwopt_exp=${rwopt:-ro}
+
+    # Check that the filesystem exists
+    zfs list -oname -tfilesystem -H "${fs}" > /dev/null 2>&1
+    [ "$?" -ne 0 ] && return 1
+
+    # Need the _original_ datasets mountpoint!
+    mountpoint=$(get_fs_value "$fs" mountpoint)
+    if [ "$mountpoint" = "legacy" -o "$mountpoint" = "none" ]; then
+        # Can't use the mountpoint property. Might be one of our
+        # clones. Check the 'org.zol:mountpoint' property set in
+        # clone_snap() if that's usable.
+        mountpoint=$(get_fs_value "$fs" org.zol:mountpoint)
+        if [ "$mountpoint" = "legacy" -o "$mountpoint" = "none" -o "$mountpoint" = "-" ]; then
+            if [ "$fs" != "${ZFS_BOOTFS}" ]; then
+                # We don't have a proper mountpoint, this
+                # isn't the root fs. So extract the root fs
+                # value from the filesystem, and we should
+                # (hopefully!) have a mountpoint we can use.
+                mountpoint="${fs##$ZFS_BOOTFS}"
+            else
+                # Last hail-mary: Hope 'rootmnt' is set!
+                mountpoint=""
+            fi
+        fi
+
+        if [ "$mountpoint" = "legacy" ]; then
+            ZFS_CMD="mount -t zfs -o ${rwopt_exp}"
+        else
+            # If it's not a legacy filesystem, it can only be a
+            # native one...
+            ZFS_CMD="mount -o zfsutil,${rwopt_exp} -t zfs"
+        fi
+    else
+        ZFS_CMD="mount -o zfsutil,${rwopt_exp} -t zfs"
+    fi
+
+    # Possibly decrypt a filesystem using native encryption.
+    decrypt_fs "$fs"
+
+    if ! ${ZFS_CMD} "${fs}" "${rootmnt}/${mountpoint}"; then
+        echo "Failed to mount ${fs} on ${rootmnt}/${mountpoint}."
+        echo "Manually mount the filesystem and exit."
+        /bin/sh
+    fi
+
+    return 0
 }
 
 zfs_mount_handler () {
-    local node=$1
-    if [ "$ZFS_DATASET" = "bootfs" ] ; then
-        if ! zfs_get_bootfs ; then
-            # Lets import everything and try again
-            /usr/bin/zpool import $ZPOOL_IMPORT_FLAGS -N -a $ZPOOL_FORCE
-            if ! zfs_get_bootfs ; then
-                echo "ZFS: Cannot find bootfs."
-                return 1
-            fi
-        fi
+    # Arch tells us where we should mount the `new root`
+    local rootmnt=$1
+    local filesystems
+
+    # Flag      : zfs_debug
+    [ -n "${zfs_debug}" ] && set -x
+
+    # Flag      : zfs_force
+    [ -n "${zfs_force}" ] && export ZPOOL_FORCE="-f"
+    echo "ZPOOL_FORCE: ${ZPOOL_FORCE}"
+
+    # Argument  : zfs_import_dir
+    [ -d "${zfs_import_dir}" ] && export ZPOOL_IMPORT_PATH="${zfs_import_dir}"
+    echo "ZPOOL_IMPORT_PATH: ${ZPOOL_IMPORT_PATH}"
+
+    # Root Filesystem Name
+    export ZFS_BOOTFS="${root#*[:=]}"
+    echo "ZFS_BOOTFS: ${ZFS_BOOTFS}"
+
+    # Root Pool Name
+    export ZFS_RPOOL="${ZFS_BOOTFS%%/*}"
+    echo "ZFS_RPOOL: ${ZFS_RPOOL}"
+
+    if [ -z "${ZFS_BOOTFS}" -a -z "${ZFS_RPOOL}" ]; then
+        echo "Invalid kernel argument zfs: expected 'root=zfs:<pool>/<dataset>'"
     fi
 
-    local pool="${ZFS_DATASET%%/*}"
-    local rwopt_exp=${rwopt:-ro}
+    import_pool "${ZFS_RPOOL}"
 
-    if ! "/usr/bin/zpool" list -H $pool 2>&1 > /dev/null ; then
-        if [ "$rwopt_exp" != "rw" ]; then
-            msg "ZFS: Importing pool $pool readonly."
-            ZPOOL_IMPORT_FLAGS="$ZPOOL_IMPORT_FLAGS -o readonly=on"
-        else
-            msg "ZFS: Importing pool $pool."
-        fi
+    case "$ZFS_BOOTFS" in
+      *@*)
+            setup_snapshot_booting "${ZFS_BOOTFS}"
+        ;;
+    esac
 
-        if ! "/usr/bin/zpool" import $ZPOOL_IMPORT_FLAGS -N $pool $ZPOOL_FORCE ; then
-            echo "ZFS: Unable to import pool $pool."
-            return 1
-        fi
-    fi
+    filesystems=$(zfs list -oname -tfilesystem -H -r "${ZFS_BOOTFS}")
+    for fs in $filesystems; do
+        mount_fs "$fs"
+    done
 
-    local mountpoint=$("/usr/bin/zfs" get -H -o value mountpoint $ZFS_DATASET)
-    if [ "$mountpoint" = "legacy" ] ; then
-        mount -t zfs -o ${rwopt_exp} "$ZFS_DATASET" "$node"
-    else
-        mount -o zfsutil,${rwopt_exp} -t zfs "$ZFS_DATASET" "$node"
+    if [ -n "${zfs_debug}" ]; then
+        set +x
+
+        echo "DEBUG: imported pools:"
+        zpool list -H
+        echo
+
+        echo "DEBUG: mounted ZFS filesystems:"
+        mount | grep zfs
+        echo
+
+        echo "=> waiting for ENTER before continuing because of 'zfs_debug'. "
+        echo -n "   'c' for shell, 'r' for reboot, 'ENTER' to continue. "
+        read b
+
+        [ "$b" = "c" ] && /bin/sh
+        [ "$b" = "r" ] && reboot -f
     fi
 }
 
 run_hook() {
-    # Force import the pools, useful if the pool has not properly been exported
-    # using 'zpool export <pool>'
-    [[ "$zfs_force" == 1 ]] && ZPOOL_FORCE='-f'
-    [[ "$zfs_import_dir" != "" ]] && ZPOOL_IMPORT_FLAGS="$ZPOOL_IMPORT_FLAGS -d $zfs_import_dir"
-
-    if [ "$root" = 'zfs' ]; then
-        mount_handler='zfs_mount_handler'
-    fi
-
-    case $zfs in
-        "")
-            # skip this line/dataset
-            ;;
-        auto|bootfs)
-            ZFS_DATASET='bootfs'
-            mount_handler="zfs_mount_handler"
-            ;;
-        *)
-            ZFS_DATASET=$zfs
-            mount_handler="zfs_mount_handler"
-            ;;
-    esac
-
-    if [ ! -f "/etc/hostid" ] ; then
-        echo "ZFS: No hostid found on kernel command line or /etc/hostid. ZFS pools may not import correctly."
-    fi
-
-    # Allow up to 10 seconds for zfs device to show up
-    for i in 1 2 3 4 5 6 7 8 9 10; do
-        [ -c "/dev/zfs" ] && break
-        sleep 1
-    done
-}
-
-
-run_latehook () {
-    /usr/bin/zpool import -N -a $ZPOOL_FORCE
+    mount_handler="zfs_mount_handler"
 }
 
 # vim:set ts=4 sw=4 ft=sh et:
