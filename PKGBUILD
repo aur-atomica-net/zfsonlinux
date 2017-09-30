@@ -4,7 +4,7 @@ _kernel_version=$(pacman -Q linux | awk '{print $2}')
 _kernel_module_version=$(pacman -Ql linux | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-[0-9]+' | head -n1)
 
 pkgname='zfsonlinux-git'
-pkgver=2805.954_b33d668dd.9df9692
+pkgver=2812.955_01ff0d754.e8474f9
 pkgrel=1
 license=('CDDL' 'GPL')
 pkgdesc='An implementation of OpenZFS designed to work in a Linux environment'
@@ -34,6 +34,8 @@ pkgver() {
     SPL_REV=$(git rev-list --count --first-parent HEAD)
     SPL_SHA=$(git rev-parse --short --verify HEAD)
 
+    KERNEL_VER=$(pacman -Ql linux | grep -oE '[0-9]+\.[0-9]+\.[0-9]+-[0-9]+' | head -n1 | sed -r 's/-/_/g')
+
     echo "${ZFS_REV}.${SPL_REV}_${ZFS_SHA}.${SPL_SHA}"
 }
 
@@ -61,6 +63,7 @@ build() {
         --prefix=/usr \
         --sbindir=/usr/bin \
         --sysconfdir=/etc \
+        --with-spl=${srcdir}/spl \
         --with-linux=/usr/lib/modules/${_kernel_module_version}-ARCH/build \
         --with-mounthelperdir=/usr/bin \
         --with-udevdir=/lib/udev
