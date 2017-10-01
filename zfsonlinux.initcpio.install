@@ -33,7 +33,7 @@ build() {
         /lib/udev/rules.d/69-vdev.rules \
         /lib/udev/rules.d/90-zfs.rules
 
-    map add_dir \
+    map add_full_dir \
         /etc/zfs/initcpio-keys.d \
         /etc/zfs/zed.d \
         /etc/zfs/zpool.d
