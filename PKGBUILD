@@ -83,6 +83,8 @@ package() {
     install -d -m755 "${pkgdir}"/etc
     touch "${pkgdir}"/etc/hostid; chmod 644 "${pkgdir}"/etc/hostid
 
+    install -d -m755 "${pkgdir}"/etc/zfs/initcpio-keys.d
+
     # initcpio support
     install -D -m644 "${srcdir}"/zfsonlinux.initcpio.hook "${pkgdir}"/usr/lib/initcpio/hooks/zfs
     install -D -m644 "${srcdir}"/zfsonlinux.initcpio.install "${pkgdir}"/usr/lib/initcpio/install/zfs
