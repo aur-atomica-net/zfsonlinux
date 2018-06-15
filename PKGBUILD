@@ -17,7 +17,6 @@ source=('zfs::git+https://github.com/zfsonlinux/zfs.git'
         'zfsonlinux.initcpio.hook')
 sha256sums=('SKIP'
             'SKIP'
-            'SKIP'
             'SKIP')
 provides=('zfs')
 conflicts=('zfsonlinux' 'zfs-git' 'spl-git' 'zfs-utils-git' 'spl-utils-git')
