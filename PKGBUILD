@@ -13,7 +13,6 @@ makedepends=('git' "linux-headers=${_kernel_version}")
 arch=('x86_64')
 url='http://zfsonlinux.org/'
 source=('zfs::git+https://github.com/zfsonlinux/zfs.git'
-        'spl::git+https://github.com/zfsonlinux/spl.git'
         'zfsonlinux.initcpio.install'
         'zfsonlinux.initcpio.hook')
 sha256sums=('SKIP'
@@ -30,26 +29,10 @@ pkgver() {
     ZFS_REV=$(git rev-list --count --first-parent HEAD)
     ZFS_SHA=$(git rev-parse --short --verify HEAD)
 
-    cd ${srcdir}/spl
-    SPL_REV=$(git rev-list --count --first-parent HEAD)
-    SPL_SHA=$(git rev-parse --short --verify HEAD)
-
-    echo "${ZFS_REV}.${SPL_REV}_${ZFS_SHA}.${SPL_SHA}"
+    echo "${ZFS_REV}_${ZFS_SHA}"
 }
 
 build() {
-    # SPL
-    cd ${srcdir}/spl
-    ./autogen.sh
-    ./configure \
-        --cache-file=../spl.config.cache \
-        --libdir=/usr/lib \
-        --prefix=/usr \
-        --sbindir=/usr/bin \
-        --with-linux=/usr/lib/modules/${_kernel_module_version}-ARCH/build
-    make
-
-    # ZFS
     cd ${srcdir}/zfs
     ./autogen.sh
     ./configure \
@@ -61,7 +44,6 @@ build() {
         --prefix=/usr \
         --sbindir=/usr/bin \
         --sysconfdir=/etc \
-        --with-spl=${srcdir}/spl \
         --with-linux=/usr/lib/modules/${_kernel_module_version}-ARCH/build \
         --with-mounthelperdir=/usr/bin \
         --with-udevdir=/lib/udev
@@ -69,11 +51,6 @@ build() {
 }
 
 package() {
-    # SPL
-    cd ${srcdir}/spl
-    make DESTDIR="${pkgdir}" install
-    sed -i "s+${srcdir}++" ${pkgdir}/usr/src/spl-*/${_kernel_module_version}-ARCH/Module.symvers
-
     # ZFS
     cd ${srcdir}/zfs
     make DESTDIR="${pkgdir}" install
