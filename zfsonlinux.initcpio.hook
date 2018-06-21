@@ -189,12 +189,22 @@ mount_fs()
 
     # Need the _original_ datasets mountpoint!
     mountpoint=$(get_fs_value "$fs" mountpoint)
-    if [ "$mountpoint" = "legacy" -o "$mountpoint" = "none" ]; then
+    if [ "$mountpoint" = "legacy" ]; then
+        # Per zfs(8):
+        # If a file system's mount point is set to legacy,
+        # ZFS makes no attempt to manage the file system,
+        # and the administrator is responsible for mounting
+        # and unmounting the file system.
+        return 0
+    fi
+
+    ZFS_CMD="mount -o zfsutil,${rwopt_exp} -t zfs"
+    if [ "$mountpoint" = "none" ]; then
         # Can't use the mountpoint property. Might be one of our
         # clones. Check the 'org.zol:mountpoint' property set in
         # clone_snap() if that's usable.
         mountpoint=$(get_fs_value "$fs" org.zol:mountpoint)
-        if [ "$mountpoint" = "legacy" -o "$mountpoint" = "none" -o "$mountpoint" = "-" ]; then
+        if [ "$mountpoint" = "none" -o "$mountpoint" = "-" ]; then
             if [ "$fs" != "${ZFS_BOOTFS}" ]; then
                 # We don't have a proper mountpoint, this
                 # isn't the root fs. So extract the root fs
@@ -206,16 +216,6 @@ mount_fs()
                 mountpoint=""
             fi
         fi
-
-        if [ "$mountpoint" = "legacy" ]; then
-            ZFS_CMD="mount -t zfs -o ${rwopt_exp}"
-        else
-            # If it's not a legacy filesystem, it can only be a
-            # native one...
-            ZFS_CMD="mount -o zfsutil,${rwopt_exp} -t zfs"
-        fi
-    else
-        ZFS_CMD="mount -o zfsutil,${rwopt_exp} -t zfs"
     fi
 
     # Possibly decrypt a filesystem using native encryption.
