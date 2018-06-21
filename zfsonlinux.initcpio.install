@@ -4,7 +4,6 @@ build() {
     map add_module \
         icp \
         spl \
-        splat \
         zavl \
         zcommon \
         zfs \
@@ -15,7 +14,6 @@ build() {
         fsck.zfs \
         hostid \
         mount.zfs \
-        splat \
         zdb \
         zed \
         zfs \
