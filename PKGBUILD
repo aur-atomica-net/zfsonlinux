@@ -1,10 +1,10 @@
 # Maintainer: Jason R. McNeil <jason@jasonrm.net>
 
 _kernel_version=$(pacman -Q linux | awk '{print $2}')
-_kernel_module_version=$(pacman -Ql linux | grep -m 1 -oE '[0-9]+\.[0-9]+\.[0-9]+-[0-9]+')
+_kernel_module_version=$(ls -1 /usr/lib/modules/ | grep -v extra)
 
 pkgname='zfsonlinux-git'
-pkgver=2805.954_b33d668dd.9df9692
+pkgver=3283_dae3e9ea2
 pkgrel=1
 license=('CDDL' 'GPL')
 pkgdesc='An implementation of OpenZFS designed to work in a Linux environment'
@@ -43,7 +43,7 @@ build() {
         --prefix=/usr \
         --sbindir=/usr/bin \
         --sysconfdir=/etc \
-        --with-linux=/usr/lib/modules/${_kernel_module_version}-ARCH/build \
+        --with-linux=/usr/lib/modules/${_kernel_module_version}/build \
         --with-mounthelperdir=/usr/bin \
         --with-udevdir=/lib/udev
     make
@@ -53,7 +53,7 @@ package() {
     # ZFS
     cd ${srcdir}/zfs
     make DESTDIR="${pkgdir}" install
-    sed -i "s+${srcdir}++" ${pkgdir}/usr/src/zfs-*/${_kernel_module_version}-ARCH/Module.symvers
+    sed -i "s+${srcdir}++" ${pkgdir}/usr/src/zfs-*/${_kernel_module_version}/Module.symvers
 
     # take ownership of hostid file
     install -d -m755 "${pkgdir}"/etc
