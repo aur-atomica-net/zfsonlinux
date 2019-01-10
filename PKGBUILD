@@ -9,7 +9,7 @@ pkgrel=1
 license=('CDDL' 'GPL')
 pkgdesc='An implementation of OpenZFS designed to work in a Linux environment'
 depends=("linux=${_kernel_version}")
-makedepends=('git' "linux-headers=${_kernel_version}")
+makedepends=('git' "linux-headers=${_kernel_version}" "python2" "python")
 arch=('x86_64')
 url='http://zfsonlinux.org/'
 source=('zfs::git+https://github.com/zfsonlinux/zfs.git'
