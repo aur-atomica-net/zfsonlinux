@@ -13,7 +13,12 @@ import_pool() {
         ZPOOL_IMPORT_RO="-o readonly=on"
     fi
 
-    if ! zpool import -N ${ZPOOL_FORCE} ${ZPOOL_IMPORT_RO} "$pool"; then
+    ZPOOL_IMPORT_ARG=""
+    if [ -n "${ZPOOL_IMPORT_DIR}" ]; then
+        ZPOOL_IMPORT_ARG="-d ${ZPOOL_IMPORT_DIR}"
+    fi
+
+    if ! zpool import -N ${ZPOOL_FORCE} ${ZPOOL_IMPORT_RO} ${ZPOOL_IMPORT_ARG} "$pool"; then
         echo "Failed to import pool: '$pool'"
         echo "Manually import the pool and exit."
         /bin/sh
@@ -168,10 +173,16 @@ decrypt_fs()
     # Unlock the encryption root
     encryptionroot=$(get_fs_value "$fs" encryptionroot)
 
+    if [ -n "${ZFS_LOAD_KEY}" ]; then
+        if echo "${ZFS_LOAD_KEY}" | zfs load-key -r "$encryptionroot"; then
+            return 0
+        fi
+    fi
+
     # If the key isn't available, then this will fail!
     if ! zfs load-key -r "$encryptionroot"; then
-        echo "Failed to load zfs encryption wrapper key for '$fs'"
-        echo "Please verify dataset property 'keysource' for datasets"
+        echo "Failed to load zfs encryption key for '$fs'"
+        echo "Please verify dataset property 'keysource' for '$encryptionroot'"
         /bin/sh
     fi
 
@@ -242,19 +253,19 @@ zfs_mount_handler () {
 
     # Flag      : zfs_force
     [ -n "${zfs_force}" ] && export ZPOOL_FORCE="-f"
-    echo "ZPOOL_FORCE: ${ZPOOL_FORCE}"
 
     # Argument  : zfs_import_dir
-    [ -d "${zfs_import_dir}" ] && export ZPOOL_IMPORT_PATH="${zfs_import_dir}"
-    echo "ZPOOL_IMPORT_PATH: ${ZPOOL_IMPORT_PATH}"
+    ZPOOL_IMPORT_DIR='/dev/disk/by-partuuid'
+    [ -d "${zfs_import_dir}" ] && export ZPOOL_IMPORT_DIR="${zfs_import_dir}"
+
+    # Argument  : zfs_load_key
+    [ -n "${zfs_load_key}" ] && export ZFS_LOAD_KEY="${zfs_load_key}"
 
     # Root Filesystem Name
     export ZFS_BOOTFS="${root#*[:=]}"
-    echo "ZFS_BOOTFS: ${ZFS_BOOTFS}"
 
     # Root Pool Name
     export ZFS_RPOOL="${ZFS_BOOTFS%%/*}"
-    echo "ZFS_RPOOL: ${ZFS_RPOOL}"
 
     if [ -z "${ZFS_BOOTFS}" -a -z "${ZFS_RPOOL}" ]; then
         echo "Invalid kernel argument zfs: expected 'root=zfs:<pool>/<dataset>'"
