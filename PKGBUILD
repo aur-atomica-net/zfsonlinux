@@ -81,5 +81,5 @@ package() {
 
 check() {
     # Verify the version of the kernel we are requiring is the same as the built module is expecting
-    xzcat "${pkgdir}"/usr/lib/modules/${_kernel_module_version}/extra/zfs/zfs.ko.xz | strings | grep "${_kernel_version}"
+    xzcat "${pkgdir}"/usr/lib/modules/${_kernel_module_version}/extra/zfs/zfs.ko.xz | strings | grep "vermagic=${_kernel_version}"
 }
