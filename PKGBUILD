@@ -1,13 +1,13 @@
 # Maintainer: Jason R. McNeil <jason@jasonrm.net>
 
 _kernel_version=$(pacman -Q linux | awk '{print $2}')
-_kernel_module_version=$(ls -1 /usr/lib/modules/ | grep -v extra)
+_kernel_module_version=$(ls -1 /usr/lib/modules/ | grep ${_kernel_version})
 
 pkgname='zfsonlinux-git'
 pkgver=3283_dae3e9ea2
 pkgrel=1
 license=('CDDL' 'GPL')
-pkgdesc='An implementation of OpenZFS designed to work in a Linux environment'
+pkgdesc='ZFS on Linux is an advanced file system and volume manager which was originally developed for Solaris and is now maintained by the OpenZFS community'
 depends=("linux=${_kernel_version}")
 makedepends=('git' "linux-headers=${_kernel_version}" "python2" "python")
 arch=('x86_64')
@@ -77,4 +77,9 @@ package() {
     # Move /lib to /usr/lib and cleanup
     cp -r "${pkgdir}"/{lib,usr}
     rm -r "${pkgdir}"/lib
+}
+
+check() {
+    # Verify the version of the kernel we are requiring is the same as the built module is expecting
+    xzcat "${pkgdir}"/usr/lib/modules/${_kernel_module_version}/extra/zfs/zfs.ko.xz | strings | grep "${_kernel_version}"
 }
