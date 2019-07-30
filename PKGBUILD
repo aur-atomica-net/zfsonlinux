@@ -49,6 +49,11 @@ build() {
     make
 }
 
+check() {
+    # Verify the version of the kernel we are requiring is the same as the built module is expecting
+    strings "${srcdir}"/zfs/module/zfs/zfs.ko | grep "vermagic=${_kernel_version}"
+}
+
 package() {
     # ZFS
     cd ${srcdir}/zfs
@@ -79,7 +84,3 @@ package() {
     rm -r "${pkgdir}"/lib
 }
 
-check() {
-    # Verify the version of the kernel we are requiring is the same as the built module is expecting
-    xzcat "${pkgdir}"/usr/lib/modules/${_kernel_module_version}/extra/zfs/zfs.ko.xz | strings | grep "vermagic=${_kernel_version}"
-}
