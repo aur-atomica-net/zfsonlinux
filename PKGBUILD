@@ -1,7 +1,6 @@
 # Maintainer: Jason R. McNeil <jason@jasonrm.net>
 
 _kernel_version=$(pacman -Q linux | awk '{print $2}')
-_kernel_module_version=$(ls -1 /usr/lib/modules/ | grep ${_kernel_version})
 
 pkgname='zfsonlinux-git'
 pkgver=3283_dae3e9ea2
@@ -32,6 +31,8 @@ pkgver() {
 }
 
 build() {
+    _kernel_module_version=$(ls -1 /usr/lib/modules/ | grep ${_kernel_version})
+
     cd ${srcdir}/zfs
     ./autogen.sh
     ./configure \
@@ -55,6 +56,8 @@ check() {
 }
 
 package() {
+    _kernel_module_version=$(ls -1 /usr/lib/modules/ | grep ${_kernel_version})
+
     # ZFS
     cd ${srcdir}/zfs
     make DESTDIR="${pkgdir}" install
