@@ -52,7 +52,11 @@ build() {
 
 check() {
     # Verify the version of the kernel we are requiring is the same as the built module is expecting
-    strings "${srcdir}"/zfs/module/zfs/zfs.ko | grep "vermagic=${_kernel_version}"
+    NUM_WRONG=$(strings "${srcdir}"/zfs/module/*/*.ko | grep 'vermagic=' | grep -v --count ${_kernel_version})
+    if [[ $NUM_WRONG -gt 0 ]]; then
+        echo "[CRITICAL] $NUM_WRONG module(s) are built against the wrong kernel"
+        exit 1
+    fi
 }
 
 package() {
